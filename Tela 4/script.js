@@ -1,13 +1,10 @@
-// script.js (versão corrigida / com tratamento de erros e pt-BR)
-const API_KEY = "api_key=ec332d19e6fed067df0160ce34067cc4"; // sua chave (mesma forma que você usava)
+const API_KEY = "api_key=ec332d19e6fed067df0160ce34067cc4"; // sua chave
 const BASE_URL = "https://api.themoviedb.org/3";
 
-// endpoints com language=pt-BR
 const API_URL = `${BASE_URL}/discover/movie?sort_by=popularity.desc&${API_KEY}&language=pt-BR`;
 const IMAGE_URL = "https://image.tmdb.org/t/p/w500";
 const SEARCH_URL = `${BASE_URL}/search/movie?${API_KEY}&language=pt-BR`;
 
-// gêneros traduzidos (mantive o array local para gerar os botões)
 const genres = [
   { id: 28, name: "Ação" },
   { id: 12, name: "Aventura" },
@@ -30,7 +27,7 @@ const genres = [
   { id: 37, name: "Faroeste" },
 ];
 
-const main = document.getElementById("main");
+const main = document.getElementById("main" );
 const form = document.getElementById("form");
 const search = document.getElementById("search");
 const tagsEl = document.getElementById("tags");
@@ -47,15 +44,12 @@ let totalPages = 100;
 
 window.addEventListener("load", function () {
   let loader = document.querySelector(".loader");
-  if (loader) loader.style.display = "none"; // esconder loader ao carregar
+  if (loader) loader.style.display = "none";
 });
 
-// garante rótulos em pt-BR mesmo se o HTML estiver em inglês
 if (search) search.placeholder = "Buscar filme";
 if (prev) prev.innerHTML = "&#8656; Anterior";
 if (next) next.innerHTML = "Próximo &#8658;";
-const gateremarkLink = document.querySelector(".gateremark");
-if (gateremarkLink) gateremarkLink.textContent = "por gateremark";
 
 let selectedGenre = [];
 setGenre();
@@ -69,20 +63,11 @@ function setGenre() {
     t.id = genre.id;
     t.innerText = genre.name;
     t.addEventListener("click", () => {
-      if (selectedGenre.length == 0) {
-        selectedGenre.push(genre.id);
+      if (selectedGenre.includes(genre.id)) {
+        selectedGenre = selectedGenre.filter((id) => id !== genre.id);
       } else {
-        if (selectedGenre.includes(genre.id)) {
-          selectedGenre.forEach((id, idx) => {
-            if (id == genre.id) {
-              selectedGenre.splice(idx, 1);
-            }
-          });
-        } else {
-          selectedGenre.push(genre.id);
-        }
+        selectedGenre.push(genre.id);
       }
-      // ao filtrar, garante language no endpoint (API_URL já contém language)
       getMovies(API_URL + "&with_genres=" + encodeURI(selectedGenre.join(",")));
       highlightSelection();
     });
@@ -94,12 +79,10 @@ function highlightSelection() {
   const tags = document.querySelectorAll(".tag");
   tags.forEach((tag) => tag.classList.remove("highlight"));
   clearBtn();
-  if (selectedGenre.length != 0) {
-    selectedGenre.forEach((id) => {
-      const hightlightedTag = document.getElementById(id);
-      if (hightlightedTag) hightlightedTag.classList.add("highlight");
-    });
-  }
+  selectedGenre.forEach((id) => {
+    const highlightedTag = document.getElementById(id);
+    if (highlightedTag) highlightedTag.classList.add("highlight");
+  });
 }
 
 function clearBtn() {
@@ -120,7 +103,6 @@ function clearBtn() {
   }
 }
 
-// busca filmes (com tratamento de erros)
 function getMovies(url) {
   lastUrl = url;
   fetch(url)
@@ -160,167 +142,100 @@ function getMovies(url) {
     });
 }
 
-function showMovies(data) {
-  if (!main) return;
-  main.innerHTML = "";
+// ===================================================================
+// FUNÇÃO ATUALIZADA PARA GERAR LINKS DE BUSCA DIRETA
+// ===================================================================
+async function getStreamingLink(movie) {
+  const { id, title } = movie;
+  const providersUrl = `${BASE_URL}/movie/${id}/watch/providers?${API_KEY}`;
 
-  data.forEach((movie) => {
-    const { title, poster_path, vote_average, overview, id } = movie;
+  // Mapa de provedores para seus links de busca
+  const searchLinks = {
+    "Netflix": "https://www.netflix.com/search?q=",
+    "Amazon Prime Video": "https://www.primevideo.com/search/ref=atv_nb_sr?phrase=",
+    "Max": "https://play.max.com/search?q=",
+    "Disney Plus": "https://www.disneyplus.com/search?q=",
+    "Star Plus": "https://www.starplus.com/search?q=",
+    "Globoplay": "https://globoplay.globo.com/busca/?q=",
+    "Paramount Plus": "https://www.paramountplus.com/search/?q=",
+    "Apple TV Plus": "https://tv.apple.com/br/search?term=",
+  };
+
+  try {
+    const res = await fetch(providersUrl );
+    const data = await res.json();
+    const providers = data.results.BR;
+
+    if (providers && providers.flatrate && providers.flatrate.length > 0) {
+      const primaryProvider = providers.flatrate[0];
+      const providerName = primaryProvider.provider_name;
+
+      if (searchLinks[providerName]) {
+        const searchUrl = `${searchLinks[providerName]}${encodeURIComponent(title)}`;
+        return `  
+  
+<a href="${searchUrl}" target="_blank" class="watch-link">Assistir na ${providerName}</a>`;
+      } else {
+        // Se o provedor não estiver no nosso mapa, usamos o link do JustWatch como fallback
+        const fallbackLink = providers.link;
+        return `  
+  
+<a href="${fallbackLink}" target="_blank" class="watch-link">Ver opções na ${providerName}</a>`;
+      }
+    } else {
+      return `  
+  
+<span class="not-available">Não disponível em streaming por assinatura.</span>`;
+    }
+  } catch (error) {
+    console.error("Erro ao buscar provedores:", error);
+    return `  
+  
+<span class="not-available">Não foi possível verificar a disponibilidade.</span>`;
+  }
+}
+
+async function showMovies(data) {
+  if (!main) return;
+  main.innerHTML = ""; // Limpa a área de filmes
+
+  // Adiciona a atribuição ao JustWatch no final
+  const attribution = document.createElement('div');
+  attribution.style.textAlign = 'center';
+  attribution.style.marginTop = '20px';
+  attribution.style.fontSize = '12px';
+  attribution.innerHTML = 'Streaming data provided by <a href="https://www.justwatch.com" target="_blank">JustWatch</a>.';
+
+
+  for (const movie of data ) {
+    const { title, poster_path, vote_average, overview } = movie;
     const movieEl = document.createElement("div");
     movieEl.classList.add("movie");
 
     const imgSrc = poster_path ? IMAGE_URL + poster_path : "http://via.placeholder.com/1080x1580";
+    let safeOverview = overview ? overview : "Sem descrição disponível.";
 
-    const safeOverview = overview ? overview : "Sem descrição disponível.";
+    // Busca o link de streaming e o adiciona na descrição
+    const streamingLink = await getStreamingLink(movie ); // Passa o objeto 'movie' inteiro
+    safeOverview += streamingLink;
 
     movieEl.innerHTML = `
       <img src="${imgSrc}" alt="${title || ""}">
       <div class="movie-info">
         <h3>${title || movie.original_title || "Sem título"}</h3>
-        <span class="${getColor(vote_average)}">${vote_average ?? "N/A"}</span>
+        <span class="${getColor(vote_average)}">${vote_average ? vote_average.toFixed(1) : "N/A"}</span>
       </div>
       <div class="overview">
         <h3>Descrição</h3>
         ${safeOverview}
-        <br/>
-        <button class="know-more" id="btn-${id}">Ver mais</button>
       </div>
     `;
 
     main.appendChild(movieEl);
-
-    // adiciona listener no botão criado (id prefixado para evitar conflito)
-    const btn = document.getElementById(`btn-${id}`);
-    if (btn) {
-      btn.addEventListener("click", () => {
-        openNav(movie);
-      });
-    }
-  });
-}
-
-const overlayContent = document.getElementById("overlay-content");
-
-// abre overlay: busca detalhes (pt-BR) + vídeos
-async function openNav(movie) {
-  const id = movie.id;
-  if (!overlayContent) return;
-
-  // Show overlay immediately (so user sees feedback)
-  document.getElementById("myNav").style.width = "100%";
-  overlayContent.innerHTML = `<h1 class="no-results">Carregando...</h1>`;
-
-  try {
-    const [detailResp, videoResp] = await Promise.all([
-      fetch(`${BASE_URL}/movie/${id}?${API_KEY}&language=pt-BR`),
-      fetch(`${BASE_URL}/movie/${id}/videos?${API_KEY}&language=pt-BR`),
-    ]);
-
-    if (!detailResp.ok) throw new Error("Erro ao buscar detalhes: " + detailResp.status);
-    if (!videoResp.ok) throw new Error("Erro ao buscar vídeos: " + videoResp.status);
-
-    const detailData = await detailResp.json();
-    const videoData = await videoResp.json();
-
-    // monta vídeos (YouTube)
-    let embed = [];
-    let dots = [];
-    if (videoData && videoData.results && videoData.results.length > 0) {
-      videoData.results.forEach((video, idx) => {
-        const { name, key, site } = video;
-        if (site === "YouTube") {
-          embed.push(`
-            <iframe width="560" height="315" src="https://www.youtube.com/embed/${key}" title="${name}" class="embed hide" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
-          `);
-          dots.push(`<span class="dot">${idx + 1}</span>`);
-        }
-      });
-    }
-
-    const title = detailData.title || detailData.original_title || movie.title || "Sem título";
-    const overview = detailData.overview || "Sem descrição disponível.";
-    const genresList = detailData.genres ? detailData.genres.map((g) => g.name).join(", ") : "";
-
-    let content = `
-      <h1 class="no-results">${title}</h1>
-      <p><strong>Gêneros:</strong> ${genresList}</p>
-      <p>${overview}</p>
-      <br/>
-      ${embed.join("")}
-      <br/>
-      <div class="dots">${dots.join("")}</div>
-    `;
-
-    if (embed.length === 0) {
-      content = `
-        <h1 class="no-results">${title}</h1>
-        <p><strong>Gêneros:</strong> ${genresList}</p>
-        <p>${overview}</p>
-        <br/>
-        <h3>Nenhum vídeo encontrado</h3>
-      `;
-    }
-
-    overlayContent.innerHTML = content;
-    activeSlide = 0;
-    showVideos();
-  } catch (err) {
-    console.error("Erro no overlay:", err);
-    overlayContent.innerHTML = `<h1 class="no-results">Erro ao carregar o conteúdo. Veja o console (F12).</h1>`;
   }
+   main.appendChild(attribution);
 }
 
-/* fecha overlay */
-function closeNav() {
-  const nav = document.getElementById("myNav");
-  if (nav) nav.style.width = "0%";
-}
-
-let activeSlide = 0;
-let totalVideos = 0;
-
-function showVideos() {
-  let embedClasses = document.querySelectorAll(".embed");
-  let dots = document.querySelectorAll(".dot");
-
-  totalVideos = embedClasses.length;
-  embedClasses.forEach((embedTag, idx) => {
-    if (activeSlide == idx) {
-      embedTag.classList.add("show");
-      embedTag.classList.remove("hide");
-    } else {
-      embedTag.classList.add("hide");
-      embedTag.classList.remove("show");
-    }
-  });
-
-  dots.forEach((dot, indx) => {
-    if (activeSlide == indx) {
-      dot.classList.add("active");
-    } else {
-      dot.classList.remove("active");
-    }
-  });
-}
-
-const leftArrow = document.getElementById("left-arrow");
-const rightArrow = document.getElementById("right-arrow");
-
-if (leftArrow) {
-  leftArrow.addEventListener("click", () => {
-    if (activeSlide > 0) activeSlide--;
-    else activeSlide = totalVideos - 1;
-    showVideos();
-  });
-}
-
-if (rightArrow) {
-  rightArrow.addEventListener("click", () => {
-    if (activeSlide < totalVideos - 1) activeSlide++;
-    else activeSlide = 0;
-    showVideos();
-  });
-}
 
 function getColor(vote) {
   if (!vote && vote !== 0) return "gray";
@@ -362,18 +277,16 @@ function pageCall(page) {
     return;
   }
   let queryParams = urlSplit[1].split("&");
-  let lastParam = queryParams[queryParams.length - 1].split("=");
-  if (lastParam[0] != "page") {
-    let url = lastUrl + "&page=" + page;
-    getMovies(url);
+  let pageParamIndex = queryParams.findIndex(p => p.startsWith('page='));
+
+  if (pageParamIndex !== -1) {
+    queryParams[pageParamIndex] = "page=" + page;
   } else {
-    lastParam[1] = page.toString();
-    queryParams[queryParams.length - 1] = lastParam.join("=");
-    let b = queryParams.join("&");
-    let url = urlSplit[0] + "?" + b;
-    getMovies(url);
+    queryParams.push("page=" + page);
   }
+
+  let newUrl = urlSplit[0] + "?" + queryParams.join("&");
+  getMovies(newUrl);
 }
 
-// inicializa busca
 getMovies(API_URL);
